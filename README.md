@@ -9,10 +9,10 @@
 * 32-bit instructions only, all instructions take single clock to
   decode/execute (fetch varies)
 * Dual mode operation (user, supervisor/interrupt)
-* 32 32-bit integer registers: %i0-%if (indirect) and %d0-%df (data)
+* 32 32-bit integer registers: %i0-%if (passed/indirect) and %d0-%df (data)
 * 16 64-bit floating point registers: %f0-%ff
 * 4 256-bit SIMD registers: %m0-%m3
-* 256-deep interrupt buffer
+* 256-deep interrupt buffer (additional interrupts dropped)
 * No data need be stored on interrupt; supervisor has own %i0-%if,
   %d0-%de (data) registers (%df/%pc shared, %if/%lr contains last %pc on
   interrupt)
@@ -21,16 +21,18 @@
 * %df = %pc (program counter)
 * %if = %lr (link register), no data stored/retrieved on jsr/rts, %pc
   and %lr swapped
-* Status register %st: Z, N, V, C, S [zero, negative, overflow/divide
-  by zero, carry, supervisor mode]; separate status registers for each
-  mode (user/supervisor)
+* Status register %st: Z, N, V, C, FZ, FN, FINF, FNNF, FNAN, FDN, S
+  [zero, negative, overflow/divide by zero, carry, float zero, float
+  negative, infinity, negative infinity, not a number, denormalized,
+  supervisor mode]; separate status registers for each mode
+  (user/supervisor)
 * %d0-%d8 stored to SSP on call, popped off SSP on ret, %st cleared
-* MMU on-die 64kW tagged (ASN) TLB using 64k-word pages (pre-cache
+* MMU on-die 64kW tagged (ASN) TLB using 64kW pages (pre-cache
   translation)
 
-## Modules
+# Modules
 
-# Processor
+## Processor
 
 All cache is L1/L2/L3 2-way associative write through cache in
 256-word blocks. L1 per core, L2/L3 shared among all cores. L1 = 1
@@ -43,7 +45,7 @@ cycle latency, L2 = 4 cycles, L3 = 16 cycles.
 * ZN45C16 = 4 Core, 16kW/1MW/16MW cache
 * ZN85C16 = 8 Core, 8kW/1MW/16MW cache
 
-# Memory
+## Memory
 
 * MM64M = 64MW/256kB Memory Module
 * MM128M = 128MW/512kB Memory Module
@@ -51,7 +53,7 @@ cycle latency, L2 = 4 cycles, L3 = 16 cycles.
 
 Max 4MM/bus.  200 cycle latency.
 
-# Attached Storage
+## Attached Storage
 
 * SSSM10G = 2.5GW/10GB Solid State Storage Module
 * SSSM20G = 5GW/20GB Solid State Storage Module
@@ -59,10 +61,12 @@ Max 4MM/bus.  200 cycle latency.
 
 1000 cycle latency.
 
-# Other
+## Other
 
 * Keyboard
 * Monitor
+
+# Instruction Set
 
 ## 3 Operand Integer Instructions [15/16]
 
@@ -71,8 +75,7 @@ Max 4MM/bus.  200 cycle latency.
 1 2345 6789A BCDEF0123456789AB CDEF0
 1 xxxx xxxxx xyyyyyyyyyyyzzzzz xxxxx
 
-op = { 0=and, 1=or, 2=xor, 3=add, 4=addc, 5=sub, 6=subc, 7=mullo,
-       8=mulhi, 9=mulslo, A=mulshi, B=div, C=divs, D=mod, E=mods }
+op = { 0=and, ... }
 x, z = %r
 y = zzzzz = %r                          if x = 0 ( yyyyyyyyyyy = ignored )
     yyyyyyyyyyyzzzzz = -2^15,2^15-1     if x = 1
@@ -82,7 +85,7 @@ X and Z are registers, Y is either a register or a literal number
 ranging from -2^15 to 2^15-1.  Result is stored in Z.
 
 ```
-operation      flags  	description
+operation      flags    description
 
 and X, Y, Z    Z,N      ;bitwise and (1100 x 1010 = 1000)
 or X, Y, Z     Z,N      ;bitwise or (1100 x 1010 = 1110)
@@ -108,8 +111,7 @@ mods X, Y, Z   Z,N,V    ;signed modulo (V,Z=0 if divide by zero)
 12 3456 789AB CDEF01 23456789ABCDEF0
 01 xxxx xxxxx xyyyyy xxxxxxxxxxxxxxx
 
-op = { 0=ld, 1=st, 2=cp, 3=cmp, 4=bit, 5=asl, 6=asr, 7=shl,
-       8=shr, 9=rol, A=ror }
+op = { 0=ld, ... }
 fill = ignored
 x = %r
 y = yyyyy = %r          if x = 0
@@ -122,7 +124,7 @@ overflow, C is the final bit.  X is modified in place for shifts or
 rotations.
 
 ```
-operation      flags  	description
+operation      flags    description
 
 ld X, Y        Z,N      ;load register X with value at address in register Y
 st X, Y                 ;store register X value at address in register Y
@@ -137,18 +139,16 @@ rol X, Y       Z,N,V,C  ;rotate left (Y bits)
 ror X, Y       Z,N,V,C  ;rotate right (Y bits)
 ```
 
-## 1 Operand (Integer) Instructions [20/32]
+## 1 Operand Integer/Control Instructions [36/64]
 
 ```
-    op    x
-123 45678 9ABCDEF0123456789ABCDEF0
-001 xxxxx xyyyyyyyyyyyyyyyzzzzzzzz
+    op     x
+123 456789 ABCDEF0123456789ABCDEF0
+001 xxxxxx xyyyyyyyyyyyyyyzzzzzzzz
 
-op = { 00=push, 01=pop, 02=nor, 03=clr, 04=set, 05=inc, 06=dec, 07=beq,
-       08=bne, 09=blt, 0A=bgt, 0B=bmi, 0C=bpl, 0D=bvc, 0E=bvs, 0F=bcc,
-       10=bcs, 11=bge, 12=jmp, 13=call }
+op = { 00=push, ... }
 x = zzzzz = %r                                  if x = 0 ( yyy... = ignored)
-    yyyyyyyyyyyyyyyyyyzzzzz = -2^22,2^22-1      if x = 1
+    yyyyyyyyyyyyyyyyyzzzzz = -2^21,2^21-1       if x = 1
 ```
 
 X is a register, or for jumps/branches can be a literal ranging from
@@ -157,38 +157,163 @@ X is a register, or for jumps/branches can be a literal ranging from
 out.
 
 ```
-operation      flags  	description
+operation      flags    description
 
-push X                  ;store register on data stack
-pop X          Z,N      ;pop register off data stack
+push X                  ;store register on user stack
+pop X          Z,N      ;pop register off user stack
 nor X          Z,N      ;inverts bit value
+neg X          Z,N,V    ;negate (2's complement)
 clr X                   ;clears register (all 0's)
 set X                   ;sets register (all 1's)
 inc X          Z,N,V    ;increment value
 dec X          Z,N,V    ;decrement value
-beq X                   ;branch when zero set to register address
-bne X                   ;branch when zero clear to register address
-bmi X                   ;branch when negative set to register address
-bpl X                   ;branch when negative clear to register address
-bvc X                   ;branch when overflow clear to register address
-bvs X                   ;branch when overflow set to register address
-bcc X                   ;branch when carry clear to register address
-bcs X                   ;branch when carry set to register address
-bgt X                   ;branch when zero clear to negative set (greater than)
-blt X                   ;branch when zero clear and negative clear (less than)
-bge X                   ;branch when zero set or negative set (greater or equal)
+beq X                   ;branch when zero set (to register address)
+bne X                   ;branch when zero clear
+bgt X                   ;branch when zero clear and negative set (>)
+blt X                   ;branch when zero clear and negative clear (<)
+bge X                   ;branch when zero set or negative set (>=)
+bpl X                   ;branch when negative clear
+bmi X                   ;branch when negative set
+bvc X                   ;branch when overflow clear
+bvs X                   ;branch when overflow set
+bcc X                   ;branch when carry clear
+bcs X                   ;branch when carry set
+bfeq X                  ;branch when float zero set
+bfne X                  ;branch when float zero clear
+bfgt X                  ;branch when float zero clear and negative set (>)
+bflt X                  ;branch when float zero clear and negative clear (<)
+bfge X                  ;branch when float zero set or negative set (>=)
+bfpl X                  ;branch when float negative clear
+bfmi X                  ;branch when float negative set
+bfinf X                 ;branch when infinity set
+bfninf X                ;branch when infinity not set
+bfnnf X                 ;branch when negative infinity set
+bfnnnf X                ;branch when negative infinity not set
+bfnan X                 ;branch when not a number set
+bfnnan X                ;branch when not a number clear
+bfdn X                  ;branch when denormalized set
+bfndn X                 ;branch when denormalized clear
 jmp X                   ;jump to register address
 call X                  ;call function at register address
 
 ble X                   ;alias for bpl, not a distinct instruction (<=)
+bfle X                  ;alias for fbpl, not a distinct instruction (<=)
 ```
 
-## 3 Operand Floating Point Instructions
-## 2 Operand Floating Point Instructions
-## 1 Operand Floating Point Instructions
+## 3 Operand Floating Point Instructions [5/8]
+
+```
+      op  f    g    h    fill
+12345 678 9ABC DEF0 1234 56789ABCDEF0
+00011 xxx xxxx xxxx xxxx xxxxxxxxxxxx
+
+op = { 00=fadd, ... }
+f, g, h = %f
+fill = ignored
+```
+
+F, G, and H are floating point registers.  Result is stored in H.
+
+```
+operation      flags    description
+
+fadd F, G, H   [all F]  ;floating point addition
+fsub F, G, H   [all F]  ;floating point subtraction
+fmul F, G, H   [all F]  ;floating point multiplication
+fdiv F, G, H   [all F]  ;floating point division
+fatan F, G, H  [all F]  ;partial arctangent
+```
+
+## 2 Operand Floating Point/Mixed Instructions [11/16]
+
+```
+       op   x/f   y/g   fill
+123456 789A BCDEF 01234 56789ABCDEF0
+000101 xxxx xyyyy xyyyy xxxxxxxxxxxx
+
+op = { 00=ld, ... }
+x, y = xyyyy = %r       if opcode uses mixed
+f, g = yyyy = %f        if opcode uses floating point (y = ignored)
+fill = ignored
+```
+
+X is a regular 32-bit integer register, F and G are floating point
+registers. The result is stored in whichever register comes second (if
+relevant).  Note that floating point values are 64-bit, so get stored
+in/loaded from two words in memory starting at the specified address.
+
+```
+operation      flags    description
+
+ld X, G        [all F]  ;load floating point register G with value at address X
+st X, G        [all F]  ;store floating point register G at address X
+cp F, G        [all F]  ;copy register F value into register G
+fitof X, G     FZ,FN    ;convert X to float and store in G
+fftoi F, Y     Z,N,V    ;convert F to integer and store in Y
+fsqrt F, G     [all F]  ;square root
+fsin F, G      [all F]  ;sin
+fcos F, G      [all F]  ;cos
+flog F, G      [all F]  ;log2 of F+1
+fexp F, G      [all F]  ;(2^F) - 1
+fcmp F, G      FZ,FN,FNAN ;compare (FZ if =, FN if G > F, FNAN if either NaN)
+```
+
+## 1 Operand Floating Point Instructions [7/8]
+
+```
+        op  f    fill
+1234567 89A BCDE F0123456789ABCDEF0
+0001001 xxx xxxx xxxxxxxxxxxxxxxxxx
+
+op = { 00=clr, ... }
+f = %f
+fill = ignored
+```
+
+F is a floating point register.  The push and pop instructions will
+write/read two words into/from the user stack.
+
+```
+operation      flags    description
+
+push F                  ;push F onto the user stack
+pop F          [all F]  ;pop F onto the user stack
+fneg F         [all F]  ;invert sign of F
+fabs F         [all F]  ;absolute value
+clr F          FZ       ;set F to 0.0
+fpi F                   ;load F with value of PI
+fe F                    ;load F with value of E
+```
+
 ## 3 Operand SIMD Instructions
+
+```
+          op  
+123456789 ABCDEF0123456789ABCDEF0
+000100010 xxxxxxxxxxxxxxxxxxxxxxx
+
+op = { 00=nop, ... }
+```
+
 ## 2 Operand SIMD Instructions
+
+```
+          op  
+123456789 ABCDEF0123456789ABCDEF0
+000100010 xxxxxxxxxxxxxxxxxxxxxxx
+
+op = { 00=nop, ... }
+```
+
 ## 1 Operand SIMD Instructions
+
+```
+          op  
+123456789 ABCDEF0123456789ABCDEF0
+000100010 xxxxxxxxxxxxxxxxxxxxxxx
+
+op = { 00=nop, ... }
+```
 
 ## 0 Operand Instructions [20/32]
 
@@ -197,9 +322,7 @@ ble X                   ;alias for bpl, not a distinct instruction (<=)
 1234 56789 ABCDEF01 23456789ABCDEF0
 0000 xxxxx xxxxxxxx xxxxxxxxxxxxxxx
 
-op = { 00=nop, 01=pushs, 02=pops, 03=clrz, 04=clrn, 05=clrc, 06=clrv,
-       07=setz, 08=setn, 09=setc, 0A=setv, 0B=rts, 0C=ret, 0D=rti,
-       0E=jsr, 0F=stop, 10=int, 11=pushu, 12=popu, 13=user }
+op = { 00=nop, ... }
 n = x = 0,255
 fill = ignored
 ```
@@ -207,10 +330,12 @@ fill = ignored
 Interrupts will store %pc in %lr, so the rti instruction will copy %lr
 back to %pc.  The ret instruction will pop %d0-%d7 and %st.  The S bit
 is set during interrupts and reset during rti instructions and cannot
-be set or cleared.
+be set or cleared.  The pushu instruction doesn't push %pc to the
+stack, instead it copies it to %lr.  The popu instruction doesn't do
+the opposite, that requires a user instruction.
 
 ```
-operation      flags  	description
+operation      flags    description
 
 nop                     ;no operation
 pushs                   ;store status on stack
@@ -223,12 +348,12 @@ setz           Z        ;set zero bit
 setn           N        ;set negative bit
 setc           C        ;set carry bit
 setv           V        ;set overflow bit
+jsr                     ;jump to subroutine, swaps %pc and %lr
 rts                     ;return from subroutine, loads %lr in %pc
 ret                     ;return from call, pop program stack
-rti                     ;return from interrupt, pop program stack
-jsr                     ;jump to subroutine, swaps %pc and %lr
-stop                    ;wait until next interrupt
+rti                     ;return from interrupt
 int N          S        ;trigger interrupt N, copies %i0-%i7 to supervisor
+stop                    ;wait until next interrupt
 
 supervisor only:
 
