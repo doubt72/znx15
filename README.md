@@ -1,5 +1,7 @@
 # ZNX5 Instruction Set
 
+This is perhaps the second-most pointless thing I've ever done.
+
 ## Basic Parameters
 
 * Load/store architecture
@@ -29,42 +31,9 @@
 * %d0-%d8 stored to SSP on call, popped off SSP on ret, %st cleared
 * MMU on-die 64kW tagged (ASN) TLB using 64kW pages (pre-cache
   translation)
-
-# Modules
-
-## Processor
-
-All cache is L1/L2/L3 2-way associative write through cache in
-256-word blocks. L1 per core, L2/L3 shared among all cores. L1 = 1
-cycle latency, L2 = 4 cycles, L3 = 16 cycles.
-
-* ZN15C4 = 1 Core, 16kW/256kW/4MW cache
-* ZN15C8 = 1 Core, 32kW/512kW/8MW cache
-* ZN25C8 = 2 Core, 16kW/512kW/8MW cache
-* ZN45C8 = 4 Core, 8kW/512kW/8MW cache
-* ZN45C16 = 4 Core, 16kW/1MW/16MW cache
-* ZN85C16 = 8 Core, 8kW/1MW/16MW cache
-
-## Memory
-
-* MM64M = 64MW/256kB Memory Module
-* MM128M = 128MW/512kB Memory Module
-* MM256M = 256MW/1GB Memory Module
-
-Max 4MM/bus.  200 cycle latency.
-
-## Attached Storage
-
-* SSSM10G = 2.5GW/10GB Solid State Storage Module
-* SSSM20G = 5GW/20GB Solid State Storage Module
-* SSSM50G = 12.5GW/50GB Solid State Storage Module
-
-1000 cycle latency.
-
-## Other
-
-* Keyboard
-* Monitor
+* %asn = Address Space Number (ASN) register is set by asn
+  instruction; asn is enforced in user mode, but ignored during
+  supervisor mode.
 
 # Instruction Set
 
@@ -82,26 +51,27 @@ y = zzzzz = %r                          if x = 0 ( yyyyyyyyyyy = ignored )
 ```
 
 X and Z are registers, Y is either a register or a literal number
-ranging from -2^15 to 2^15-1.  Result is stored in Z.
+ranging from -2^15 to 2^15-1.  Result is stored in Z, which can equal
+X or Y.
 
 ```
-operation      flags    description
+operation          flags    description
 
-and X, Y, Z    Z,N      ;bitwise and (1100 x 1010 = 1000)
-or X, Y, Z     Z,N      ;bitwise or (1100 x 1010 = 1110)
-xor X, Y, Z    Z,N      ;exclusive or (1100 x 1010 = 0110)
-add X, Y, Z    Z,N,V,C  ;addition (overflow > 2^9, carry > 2^10)
-sub X, Y, Z    Z,N,V,C  ;subtraction (X - Y => Z)
-addc X, Y, Z   Z,N,V,C  ;addition with carry (X + Y + C -> Z)
-subc X, Y, Z   Z,N,V,C  ;subtraction with carry (X - Y - (1-C) -> Z)
-mullo X, Y, Z  Z,N      ;multiplication, stores low
-mulhi X, Y, Z  Z,N      ;multiplication, stores high
-mulslo X, Y, Z Z,N      ;signed multiplication, stores low
-mulshi X, Y, Z Z,N      ;signed multiplication, stores high
-div X, Y, Z    Z,N,V    ;division (X / Y => Z, V,Z=0 if divide by zero)
-divs X, Y, Z   Z,N,V    ;signed division (V,Z=0 if divide by zero)
-mod X, Y, Z    Z,N,V    ;modulo (X % Y => Z, V,Z=0 if divide by zero)
-mods X, Y, Z   Z,N,V    ;signed modulo (V,Z=0 if divide by zero)
+and X, Y, Z        Z,N      ;bitwise and (1100 x 1010 = 1000)
+or X, Y, Z         Z,N      ;bitwise or (1100 x 1010 = 1110)
+xor X, Y, Z        Z,N      ;exclusive or (1100 x 1010 = 0110)
+add X, Y, Z        Z,N,V,C  ;addition (overflow > 2^9, carry > 2^10)
+sub X, Y, Z        Z,N,V,C  ;subtraction (X - Y => Z)
+addc X, Y, Z       Z,N,V,C  ;addition with carry (X + Y + C -> Z)
+subc X, Y, Z       Z,N,V,C  ;subtraction with carry (X - Y - (1-C) -> Z)
+mullo X, Y, Z      Z,N      ;multiplication, stores low
+mulhi X, Y, Z      Z,N      ;multiplication, stores high
+mulslo X, Y, Z     Z,N      ;signed multiplication, stores low
+mulshi X, Y, Z     Z,N      ;signed multiplication, stores high
+div X, Y, Z        Z,N,V    ;division (X / Y => Z, V,Z=0 if divide by zero)
+divs X, Y, Z       Z,N,V    ;signed division (V,Z=0 if divide by zero)
+mod X, Y, Z        Z,N,V    ;modulo (X % Y => Z, V,Z=0 if divide by zero)
+mods X, Y, Z       Z,N,V    ;signed modulo (V,Z=0 if divide by zero)
 ```
 
 ## 2 Operand Integer Instructions [11/16]
@@ -112,16 +82,16 @@ mods X, Y, Z   Z,N,V    ;signed modulo (V,Z=0 if divide by zero)
 01 xxxx xxxxx xyyyyy xxxxxxxxxxxxxxx
 
 op = { 0=ld, ... }
-fill = ignored
 x = %r
 y = yyyyy = %r          if x = 0
     yyyyy = 0,31        if x = 1
+fill = ignored
 ```
 
 X is a register, Y is either a register or a literal number ranging
 from 0,31 (for shifts or rotations).  V is set if any positive bits
 overflow, C is the final bit.  X is modified in place for shifts or
-rotations.
+rotations.  Y can equal X (though for cp that's a nop)
 
 ```
 operation      flags    description
@@ -139,7 +109,7 @@ rol X, Y       Z,N,V,C  ;rotate left (Y bits)
 ror X, Y       Z,N,V,C  ;rotate right (Y bits)
 ```
 
-## 1 Operand Integer/Control Instructions [36/64]
+## 1 Operand Integer/Control Instructions [38/64]
 
 ```
     op     x
@@ -197,7 +167,12 @@ jmp X                   ;jump to register address
 call X                  ;call function at register address
 
 ble X                   ;alias for bpl, not a distinct instruction (<=)
-bfle X                  ;alias for fbpl, not a distinct instruction (<=)
+bfle X                  ;alias for bfpl, not a distinct instruction (<=)
+
+supervisor only:
+
+ld %asn, X              ;set address space number
+st %asn, X              ;load address space number
 ```
 
 ## 3 Operand Floating Point Instructions [5/8]
@@ -245,17 +220,17 @@ in/loaded from two words in memory starting at the specified address.
 ```
 operation      flags    description
 
-ld X, G        [all F]  ;load floating point register G with value at address X
-st X, G        [all F]  ;store floating point register G at address X
-cp F, G        [all F]  ;copy register F value into register G
-fitof X, G     FZ,FN    ;convert X to float and store in G
-fftoi F, Y     Z,N,V    ;convert F to integer and store in Y
-fsqrt F, G     [all F]  ;square root
-fsin F, G      [all F]  ;sin
-fcos F, G      [all F]  ;cos
-flog F, G      [all F]  ;log2 of F+1
-fexp F, G      [all F]  ;(2^F) - 1
-fcmp F, G      FZ,FN,FNAN ;compare (FZ if =, FN if G > F, FNAN if either NaN)
+ld X, G        [all F]     ;load floating point register G with value at address X
+st X, G        [all F]     ;store floating point register G at address X
+cp F, G        [all F]     ;copy register F value into register G
+fitof X, G     FZ,FN       ;convert X to float and store in G
+fftoi F, Y     Z,N,V       ;convert F to integer and store in Y
+fsqrt F, G     [all F]     ;square root
+fsin F, G      [all F]     ;sin
+fcos F, G      [all F]     ;cos
+flog F, G      [all F]     ;log2 of F+1
+fexp F, G      [all F]     ;(2^F) - 1
+fcmp F, G      FZ,FN,FNAN  ;compare (FZ if =, FN if G > F, FNAN if either NaN)
 ```
 
 ## 1 Operand Floating Point Instructions [7/8]
@@ -274,45 +249,136 @@ F is a floating point register.  The push and pop instructions will
 write/read two words into/from the user stack.
 
 ```
-operation      flags    description
+operation      flags                description
 
-push F                  ;push F onto the user stack
-pop F          [all F]  ;pop F onto the user stack
-fneg F         [all F]  ;invert sign of F
-fabs F         [all F]  ;absolute value
-clr F          FZ       ;set F to 0.0
-fpi F                   ;load F with value of PI
-fe F                    ;load F with value of E
+push F                              ;push F onto the user stack
+pop F          [all F]              ;pop F onto the user stack
+fneg F         [all F]              ;invert sign of F
+fabs F         FZ, FINF, FNAN, FDN  ;absolute value
+clr F          FZ                   ;set F to 0.0
+fpi F                               ;load F with value of PI
+fe F                                ;load F with value of E
 ```
 
-## 3 Operand SIMD Instructions
+## 3 Operand SIMD Instructions [20/32]
 
 ```
-          op  
-123456789 ABCDEF0123456789ABCDEF0
-000100010 xxxxxxxxxxxxxxxxxxxxxxx
+          op    m  n  p  fill
+123456789 ABCDE F0 12 34 56789ABCDEF0
+000100010 xxxxx xx xx xx xxxxxxxxxxxx
+
+op = { 00=pand, ... }
+m, n, p = %m
+fill = ignored
+```
+
+M, N, and P are 256-bit SIMD registers containing either 8 32-bit
+integer values or 4 64-bit floating point values.  Result is stored in
+P.
+
+```
+operation
+
+pand M, N, P       ;bitwise 8x8 and
+por M, N, P        ;bitwise 8x8 or
+pxor M, N, P       ;bitwise 8x8 xor
+padd M, N, P       ;integer 8x8 addition (no carry)
+psub M, N, P       ;integer 8x8 subtraction (no carry)
+paddc M, N, P      ;integer 8x8 addition (with immediate carry, lo -> hi)
+psubc M, N, P      ;integer 8x8 subtraction (with immediate carry, hi -> lo)
+pmullo M, N, P     ;integer 8x8 multiplication (store low)
+pmulhi M, N, P     ;integer 8x8 multiplication (store high)
+pmulslo M, N, P    ;integer 8x8 signed multiplication (store low)
+pmulshi M, N, P    ;integer 8x8 signed multiplication (store high)
+pdiv M, N, P       ;integer 8x8 division
+pdivs M, N, P      ;integer 8x8 signed division
+pmod M, N, P       ;integer 8x8 modulo
+pmods M, N, P      ;integer 8x8 signed modulo
+
+pfadd M, N, P      ;floating point 4x4 addition
+pfsub M, N, P      ;floating point 4x4 subtraction
+pfmul M, N, P      ;floating point 4x4 multiplication
+pfdiv M, N, P      ;floating point 4x4 division
+pfatan M, N, P     ;floating point 4x4 partial arctangent
+```
+
+
+## 2 Operand SIMD Instructions [26/32]
+
+```
+          op    x/f/m y/g/n/lit fill
+123456789 ABCDE F0123 456789ABC DEF0
+000100010 xxxxx xyyzz uvvvxyyzz xxxx
 
 op = { 00=nop, ... }
+x, y = xyyzz = %r          if opcode uses integer and u = 0 (vvv = ignored)
+f, g = yyzz = %f           if opcode uses float (uvvvx = ignored)
+m, g = zz = %m             if opcode uses SIMD (uvvvxyy = ignored)
+       vvvxyyzz = 0,255    if u = 1 (shift/rotate operations only)
+fill = ignored
 ```
 
-## 2 Operand SIMD Instructions
+X and Y are 32-bit integer registers, F and G are 64-bit floating
+point registers, M and N are 256-bit SIMD registers.  The result is
+stored in whichever register comes second (if relevant).
 
 ```
-          op  
-123456789 ABCDEF0123456789ABCDEF0
-000100010 xxxxxxxxxxxxxxxxxxxxxxx
+ld X, N          ;load SIMD register N with 8 words starting at X
+st X, N          ;store SIMD register N at 8 words starting with X
+cp M, N          ;copy SIMD register M into register N
+
+cp X, N          ;copy value in integer register X into N (8 copies)
+cp F, N          ;copy value in floating point register F into N (4 copies)
+
+pasl M, Y        ;8x arithmetic shift left (0 fill, Y bits each)
+pasr M, Y        ;8x arithmetic shift right (MSB fill, Y bits each)
+pshl M, Y        ;8x logical shift left (0 fill, Y bits each)
+pshr M, Y        ;8x logical shift right (0 fill, Y bits each)
+prol M, Y        ;8x rotate left (Y bits each)
+pror M, Y        ;8x rotate right (Y bits each)
+plrol M, Y       ;long rotate left (Y bits total)
+plror M, Y       ;long rotate right (Y bits total)
+
+pfihitof M, N    ;4x convert M high words to float and store in N
+pfilotof M, N    ;4x convert M low words to float and store in N
+pfftoihi M, N    ;4x convert M float to integer and store in N high words
+pfftoilo M, N    ;4x convert M float to integer and store in N low words
+
+pfsqrt M, N      ;4x square root
+pfsin M, N       ;4x sin
+pfcos M, N       ;4x cos
+pflog M, N       ;4x log2 of word+1
+pfexp M, N       ;4x (2^word) - 1
+
+pmax M, Y        ;maximum of 32-bit integer words in M, store in Y
+pmin M, Y        ;minimum of 32-bit integer words in M, store in Y
+
+pfmax M, G       ;maximum of 64-bit float double words in M, store in G
+pfmin M, G       ;minimum of 64-bit float double words in M, store in G
+```
+
+## 1 Operand SIMD Instructions [9/16]
+
+```
+          op   m
+123456789 ABCD EF0123456789ABCDEF0
+000100010 xxxx xxxxxxxxxxxxxxxxxxx
 
 op = { 00=nop, ... }
+m = xx = %m
 ```
 
-## 1 Operand SIMD Instructions
-
 ```
-          op  
-123456789 ABCDEF0123456789ABCDEF0
-000100010 xxxxxxxxxxxxxxxxxxxxxxx
+ppush M    ;store 8 32-bit words onto user stack
+ppop M     ;pop 8 32-bit words from user stack and load in M
+pnor M     ;invert bit value
+pneg M     ;8x negate (2's complement)
+pclr M     ;clear register (all 0's)
+pset M     ;set register (all 0's)
 
-op = { 00=nop, ... }
+pfneg M    ;4x invert sign (floating point)
+pfabs M    ;4x absolute value
+pfclr M    ;4x set value to 0.0
 ```
 
 ## 0 Operand Instructions [20/32]
@@ -361,3 +427,39 @@ pushu                   ;push user registers/status to supervisor stack
 popu                    ;pop user registers/status to supervisor stack
 user           S        ;jump to %lr, switch to user mode
 ```
+
+# Modules
+
+## Processor
+
+All cache is L1/L2/L3 2-way associative write through cache in
+256-word blocks. L1 per core, L2/L3 shared among all cores. L1 = 1
+cycle latency, L2 = 4 cycles, L3 = 16 cycles.
+
+* ZN15C4 = 1 Core, 16kW/256kW/4MW cache
+* ZN15C8 = 1 Core, 32kW/512kW/8MW cache
+* ZN25C8 = 2 Core, 16kW/512kW/8MW cache
+* ZN45C8 = 4 Core, 8kW/512kW/8MW cache
+* ZN45C16 = 4 Core, 16kW/1MW/16MW cache
+* ZN85C16 = 8 Core, 8kW/1MW/16MW cache
+
+## Memory
+
+* MM64M = 64MW/256kB Memory Module
+* MM128M = 128MW/512kB Memory Module
+* MM256M = 256MW/1GB Memory Module
+
+Max 4MM/bus.  200 cycle latency.
+
+## Attached Storage
+
+* SSSM10G = 2.5GW/10GB Solid State Storage Module
+* SSSM20G = 5GW/20GB Solid State Storage Module
+* SSSM50G = 12.5GW/50GB Solid State Storage Module
+
+1000 cycle latency.
+
+## Other
+
+* Keyboard
+* Monitor
