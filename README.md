@@ -1,15 +1,16 @@
-# ZNX5 Instruction Set
+# ZNX5 Processor
 
 This is perhaps the second-most pointless thing I've ever done.
 
-## Basic Parameters
+## Basic Properties
 
 * Load/store architecture
 * 32-bit CPU
-* 32-bit address space (in 32-bit words; 16GB byte equivalent)
+* 32-bit address space (in 32-bit words; 4GW, 16GB byte equivalent)
+* Single or multi-core
 * 3-level pipeline: fetch, decode, execute
 * 32-bit instructions only, all instructions take single clock to
-  decode/execute (fetch varies)
+  decode/execute (fetch varies depending on cache)
 * Dual mode operation (user, supervisor/interrupt)
 * 32 32-bit integer registers: %i0-%if (passed/indirect) and %d0-%df (data)
 * 16 64-bit floating point registers: %f0-%ff
@@ -29,15 +30,15 @@ This is perhaps the second-most pointless thing I've ever done.
   supervisor mode]; separate status registers for each mode
   (user/supervisor)
 * %d0-%d8 stored to SSP on call, popped off SSP on ret, %st cleared
-* MMU on-die 64kW tagged (ASN) TLB using 64kW pages (pre-cache
+* MMU on-die 16kW/256kW(L3) tagged (ASN) TLB using 16kW pages (pre-cache
   translation)
-* %asn = Address Space Number (ASN) register is set by asn
-  instruction; asn is enforced in user mode, but ignored during
+* %asn = Address Space Number (ASN) register can be set and read in
+  supervisor mode; asn is enforced in user mode, but ignored during
   supervisor mode.
 
-# Instruction Set
+## Instruction Set
 
-## 3 Operand Integer Instructions [15/16]
+### 3 Operand Integer Instructions [15/16]
 
 ```
   op   x     y                 z
@@ -74,7 +75,7 @@ mod X, Y, Z        Z,N,V    ;modulo (X % Y => Z, V,Z=0 if divide by zero)
 mods X, Y, Z       Z,N,V    ;signed modulo (V,Z=0 if divide by zero)
 ```
 
-## 2 Operand Integer Instructions [11/16]
+### 2 Operand Integer Instructions [11/16]
 
 ```
    op   x     y      fill
@@ -109,7 +110,7 @@ rol X, Y       Z,N,V,C  ;rotate left (Y bits)
 ror X, Y       Z,N,V,C  ;rotate right (Y bits)
 ```
 
-## 1 Operand Integer/Control Instructions [38/64]
+### 1 Operand Integer/Control Instructions [38/64]
 
 ```
     op     x
@@ -175,7 +176,7 @@ ld %asn, X              ;set address space number
 st %asn, X              ;load address space number
 ```
 
-## 3 Operand Floating Point Instructions [5/8]
+### 3 Operand Floating Point Instructions [5/8]
 
 ```
       op  f    g    h    fill
@@ -199,7 +200,7 @@ fdiv F, G, H   [all F]  ;floating point division
 fatan F, G, H  [all F]  ;partial arctangent
 ```
 
-## 2 Operand Floating Point/Mixed Instructions [11/16]
+### 2 Operand Floating Point/Mixed Instructions [11/16]
 
 ```
        op   x/f   y/g   fill
@@ -233,7 +234,7 @@ fexp F, G      [all F]     ;(2^F) - 1
 fcmp F, G      FZ,FN,FNAN  ;compare (FZ if =, FN if G > F, FNAN if either NaN)
 ```
 
-## 1 Operand Floating Point Instructions [7/8]
+### 1 Operand Floating Point Instructions [7/8]
 
 ```
         op  f    fill
@@ -260,7 +261,7 @@ fpi F                               ;load F with value of PI
 fe F                                ;load F with value of E
 ```
 
-## 3 Operand SIMD Instructions [20/32]
+### 3 Operand SIMD Instructions [20/32]
 
 ```
           op    m  n  p  fill
@@ -303,7 +304,7 @@ pfatan M, N, P     ;floating point 4x4 partial arctangent
 ```
 
 
-## 2 Operand SIMD Instructions [26/32]
+### 2 Operand SIMD/Mixed Instructions [26/32]
 
 ```
           op    x/f/m y/g/n/lit fill
@@ -357,7 +358,7 @@ pfmax M, G       ;maximum of 64-bit float double words in M, store in G
 pfmin M, G       ;minimum of 64-bit float double words in M, store in G
 ```
 
-## 1 Operand SIMD Instructions [9/16]
+### 1 Operand SIMD Instructions [9/16]
 
 ```
           op   m
@@ -381,7 +382,7 @@ pfabs M    ;4x absolute value
 pfclr M    ;4x set value to 0.0
 ```
 
-## 0 Operand Instructions [20/32]
+### 0 Operand Instructions [20/32]
 
 ```
      op    n        fill
@@ -417,7 +418,6 @@ setv           V        ;set overflow bit
 jsr                     ;jump to subroutine, swaps %pc and %lr
 rts                     ;return from subroutine, loads %lr in %pc
 ret                     ;return from call, pop program stack
-rti                     ;return from interrupt
 int N          S        ;trigger interrupt N, copies %i0-%i7 to supervisor
 stop                    ;wait until next interrupt
 
@@ -426,11 +426,12 @@ supervisor only:
 pushu                   ;push user registers/status to supervisor stack
 popu                    ;pop user registers/status to supervisor stack
 user           S        ;jump to %lr, switch to user mode
+rti                     ;return from interrupt
 ```
 
-# Modules
+## Modules
 
-## Processor
+### Processor
 
 All cache is L1/L2/L3 2-way associative write through cache in
 256-word blocks. L1 per core, L2/L3 shared among all cores. L1 = 1
@@ -443,7 +444,7 @@ cycle latency, L2 = 4 cycles, L3 = 16 cycles.
 * ZN45C16 = 4 Core, 16kW/1MW/16MW cache
 * ZN85C16 = 8 Core, 8kW/1MW/16MW cache
 
-## Memory
+### Memory
 
 * MM64M = 64MW/256kB Memory Module
 * MM128M = 128MW/512kB Memory Module
@@ -451,7 +452,7 @@ cycle latency, L2 = 4 cycles, L3 = 16 cycles.
 
 Max 4MM/bus.  200 cycle latency.
 
-## Attached Storage
+### Attached Storage
 
 * SSSM10G = 2.5GW/10GB Solid State Storage Module
 * SSSM20G = 5GW/20GB Solid State Storage Module
@@ -459,7 +460,7 @@ Max 4MM/bus.  200 cycle latency.
 
 1000 cycle latency.
 
-## Other
+### Other
 
 * Keyboard
 * Monitor
